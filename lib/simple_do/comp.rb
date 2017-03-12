@@ -8,7 +8,6 @@ module SimpleDO
     end
 
     def register(component, &blk)
-      component.name( gen_name(component.name) )
       @components[component.name] = component
       component.instance_eval( &blk )
     end
@@ -25,10 +24,8 @@ module SimpleDO
       @namespaces.pop
     end
 
-    def gen_name(name)
-      ret = @namespaces.push(name).join(":").to_sym
-      @namespaces.pop
-      ret
+    def current_namespace
+      @namespaces.join(":")
     end
   end
 
@@ -36,7 +33,7 @@ module SimpleDO
 
   class Component
     include AttrChain
-    attr_chain :name
+    attr_reader :namespace
 
     def self.fields
       @fields || @fields = []
@@ -63,11 +60,28 @@ module SimpleDO
       @up = up
     end
 
-    def initialize(name, options = {}, &blk)
+    def resolve_name(pname)
+      if pname.to_s.start_with? ":"
+        pname
+      else
+        if @namespace.empty?
+          name
+        else
+          :"#{@namespace}:#{pname}"
+        end
+      end
+    end
+
+    def name
+      resolve_name(@name)
+    end
+
+    def initialize(namespace, name, options = {}, &blk)
       @check = nil
       @up = nil
       @down = nil
-      @name = name
+      @namespace = namespace 
+      @name = name.to_sym
       @deps = Set.new 
       self.class.fields.each do |fname|
         if options.include? fname
@@ -97,9 +111,9 @@ module SimpleDO
         @deps
       else
         if pdeps.is_a? Array
-          @deps.merge( pdeps.flatten.map{ |i| i.to_sym } )
+          @deps.merge( pdeps.flatten.map{ |i| resolve_name(i).to_sym } )
         else
-          @deps.add( pdeps.to_sym )
+          @deps.add( resolve_name(pdeps).to_sym )
         end
         self
       end
@@ -170,8 +184,12 @@ module SimpleDO
       comp
     end
 
+    def ns
+      COMPONENT_MGR.current_namespace
+    end
+
     def comp(name, options={}, &blk)
-      reg_comp( Component.new(name, options, &blk) )
+      reg_comp( Component.new( ns, name, options, &blk) )
     end
 
     def namespace name

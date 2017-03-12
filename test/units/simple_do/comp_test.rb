@@ -9,11 +9,11 @@ class SimpleDoCompMgrTest < Minitest::Test
       setup do
         @mgr = ComponentMgr.new
       end
-      should "append namespace to register component name" do
+      should "append namespace to name" do
         @mgr.push_namespace("sp1")
-        comp1 = Component.new(:comp1) 
-        @mgr.register( comp1 )
-        assert_same comp1, @mgr.get(:"sp1:comp1")
+        assert_equal "sp1", @mgr.current_namespace
+        @mgr.push_namespace("sp1")
+        assert_equal "sp1:sp1", @mgr.current_namespace
       end
     end
 
@@ -21,27 +21,31 @@ class SimpleDoCompMgrTest < Minitest::Test
       setup do
         @mgr = ComponentMgr.new
       end
-      should "append namespace to register component name" do
+      should "remove existing namespace to name" do
+        @mgr.push_namespace("sp1")
         @mgr.push_namespace("sp1")
         @mgr.pop_namespace
-        comp1 = Component.new(:comp1) 
-        @mgr.register( comp1 )
-        assert_same comp1, @mgr.get(:comp1)
+        @mgr.pop_namespace
+        assert_equal "", @mgr.current_namespace
       end
     end
   end
 
   context "namespace" do
-    should "add namespace to registed comp" do
-      comp1 = nil
+    setup do
       namespace :sp1 do
         namespace :sp2 do
-          comp1 = comp :comp1
+          @comp1 = comp :comp1, :deps=>[ :s1, ":s2" ]
         end
       end
+    end
+    should "add namespace to registed comp" do
+      assert_same @comp1, COMPONENT_MGR.get("sp1:sp2:comp1")
+      assert_equal @comp1.name, :"sp1:sp2:comp1"
+    end
 
-      assert_same comp1, COMPONENT_MGR.get("sp1:sp2:comp1")
-      assert_equal comp1.name, :"sp1:sp2:comp1"
+    should "add namespace to depends not start with :" do
+      assert_equal Set.new([ :"sp1:sp2:s1", :":s2" ]), @comp1.depends
     end
   end
 end
