@@ -1,4 +1,4 @@
-require './simple_do/comp'
+require 'simple_do/comp'
 require 'shellwords'
 require 'byebug'
 
