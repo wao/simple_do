@@ -179,6 +179,12 @@ module SimpleDO
   end
 
   module DSL
+    def run( servers, comp )
+      on servers do |host|
+        COMPONENT_MGR.get( comp.to_sym ).run( self, host )
+      end
+    end
+
     def reg_comp( comp )
       COMPONENT_MGR.register(comp)
       comp
