@@ -1,19 +1,18 @@
 require 'simple_do/comp'
 require 'shellwords'
-require 'byebug'
 
 module SimpleDO
     class RemoveFile < Component
         def_fields :path
 
-        def initialize(name, options, &blk)
+        def initialize(namespace, name, options, &blk)
             super
         end
 
         def setup_proc
             comp = self
-            set_check( Proc.new{ !test( " [ -f #{comp.path} ] " ) } )
-            set_up( Proc.new{ |host|
+            set_check( ->(host){ !test( " [ -f #{comp.path} ] " ) } )
+            set_up( ->(host){
                 if test( " [ -w '#{File.dirname comp.path}' ] " )
                     execute( :rm, comp.path )
                 else
@@ -30,29 +29,29 @@ module SimpleDO
     class CopyFile < Component
         def_fields :local, :remote, :owner, :permission
 
-        def initialize(name, options, &blk)
+        def initialize(namespace, name, options, &blk)
             super
         end
 
         #TODO Need to specify user, permission, group, maybe need sudo
         def setup_proc
             comp = self
-            raise ArgumentError.new( "File #{comp.remote} is not exist!" ) if !File.exists? comp.remote
+            raise ArgumentError.new( "File #{comp.local} is not exist!" ) if !File.exists? comp.local
 
-            set_check( Proc.new do 
+            set_check( ->(host) do 
                 if !test(" [ -f #{comp.remote} ] " )
-                    return false
+                    next false
                 end
 
                 local_checksum = `md5sum #{comp.local}`
                 remote_checksum = capture( :md5sum, comp.remote )
-                local_checksum == remote_checksum
+                local_checksum.strip.split(" ")[0] == remote_checksum.strip.split(" ")[0]
             end )
 
-            set_up( Proc.new{ |host|
+            set_up( ->(host){
                 upload! comp.local, "tmp"
                 if comp.permission
-                    excute( :chmod, "tmp", comp.permission )
+                    execute( :chmod, comp.permission, "tmp" )
                 end
                 if test( " [ -w '#{File.dirname comp.remote}' ] " )
                     execute( :mv, "tmp",  comp.remote  ) 
@@ -72,7 +71,7 @@ module SimpleDO
                 end
             })
 
-            set_down( Proc.new{ |host|
+            set_down( ->(host){
                 if test( " [ -w '#{File.dirname comp.remote}' ] " )
                     execute( :rm, comp.remote ) 
                 else
@@ -89,7 +88,7 @@ module SimpleDO
     class LineInFile < Component
         def_fields :line, :file
 
-        def initialize(name, options, &blk)
+        def initialize(namespace, name, options, &blk)
             super
         end
 
@@ -97,20 +96,20 @@ module SimpleDO
             line = "'#{Shellwords.escape(@line)}'"
             file = "'#{Shellwords.escape(@file)}'"
 
-            set_check( Proc.new{ test( :grep, line, file ) } )
-            set_up( Proc.new{ execute( :echo, line,  ">>", file  ) } )
+            set_check( ->(host){ test( :grep, line, file ) } )
+            set_up( ->(host){ execute( :echo, line,  ">>", file  ) } )
         end
     end
 
     class AptInstall < Component
-        def initialize(name, options, &blk)
+        def initialize(namespace, name, options, &blk)
             @pkgs = []
             super
         end
 
         def setup_proc
             pkgs = @pkgs.join(" ")
-            set_up( Proc.new{ |host|
+            set_up( ->(host){
                 prepare_sudo_password( host ) do
                     as :root do
                         execute( :"apt-get", "-y", "install", pkgs )
@@ -126,7 +125,7 @@ module SimpleDO
     end
 
     class GitClone < Component
-        def initialize(name, options, &blk)
+        def initialize(namespace, name, options, &blk)
             @flag_type = :unknown
             super
         end
@@ -144,11 +143,11 @@ module SimpleDO
             repo = @repo
             localpath = @localpath
 
-            set_check( Proc.new{ |host|
+            set_check( ->(host){
                 test(" [ #{flag_type} #{flag_file} ] " ) 
             })
 
-            set_up( Proc.new{  
+            set_up( ->(host){  
                 if test(" [ -d #{localpath} ] " ) 
                     execute( :rm, "-rf #{localpath}" )
                 end
@@ -156,7 +155,7 @@ module SimpleDO
                 # execute( "echo 'export PATH=\"$HOME/.rbenv/bin:$PATH\"' >> ~/.bashrc" )
             })
 
-            set_down( Proc.new{
+            set_down( ->(host){
                 execute( :rm, "-rf", localpath )
             })
         end 
@@ -176,15 +175,23 @@ module SimpleDO
 
     module DSL
         def line_in_file(name, options={}, &blk)
-            reg_comp( LineInFile.new(name, options, &blk) )
+            reg_comp( LineInFile.new(ns, name, options, &blk) )
         end
 
         def apt_install(name, options={}, &blk)
-            reg_comp( AptInstall.new(name, options, &blk) )
+            reg_comp( AptInstall.new(ns, name, options, &blk) )
         end
 
         def remove_file(name, options={}, &blk)
-            reg_comp( RemoveFile.new(name, options, &blk) )
+            reg_comp( RemoveFile.new(ns, name, options, &blk) )
+        end
+
+        def git_clone(name, options={}, &blk)
+            reg_comp( GitClone.new(ns, name, options, &blk) )
+        end
+
+        def copy_file(name, options={}, &blk)
+            reg_comp( CopyFile.new(ns, name, options, &blk) )
         end
     end
 end

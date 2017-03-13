@@ -5,7 +5,7 @@ require 'simple_do/version'
 
 Gem::Specification.new do |spec|
   spec.name          = "simple_do"
-  spec.version       = SimpleDo::VERSION
+  spec.version       = SimpleDO::VERSION
   spec.authors       = ["Yang Chen"]
   spec.email         = ["yangchen@thinkmore.info"]
 
@@ -29,6 +29,9 @@ Gem::Specification.new do |spec|
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
+  spec.add_dependency "sshkit"
+  spec.add_dependency "attr_chain"
+  spec.add_development_dependency "byebug"
   spec.add_development_dependency "bundler", "~> 1.14"
   spec.add_development_dependency "rake", "~> 10.0"
   spec.add_development_dependency "minitest", "~> 5.0"

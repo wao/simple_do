@@ -1,7 +1,7 @@
 require 'simple_do'
 
-module SimpleDO
-  module DSL
+include SimpleDO::DSL
+
     namespace :rbenv do
       comp :rbenv, deps: [ :git, :bashrc ]
 
@@ -28,5 +28,3 @@ module SimpleDO
         localpath "~/.rbenv/plugins/ruby-build"
       end
     end
-  end
-end

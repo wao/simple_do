@@ -1,4 +1,6 @@
 require 'attr_chain'
+require 'sshkit'
+require 'sshkit/dsl'
 
 module SimpleDO
   class ComponentMgr 
@@ -133,18 +135,18 @@ module SimpleDO
 
     def do_check(inst, host )
       if @check
-        inst.instance_eval( &@check )
+        inst.instance_exec( host, &@check )
       else
         false
       end
     end
 
     def do_up(inst, host )
-      inst.instance_eval( &@up ) if @up
+      inst.instance_exec( host, &@up ) if @up
     end
 
     def do_down(inst, host )
-      inst.instance_eval( &@down ) if @down
+      inst.instance_exec( host, &@down ) if @down
     end
 
     def run(inst, host)
@@ -168,6 +170,29 @@ module SimpleDO
       do_check(inst, host)
     end
 
+    #down this only or down all
+    def run_down(inst, host)
+      if do_check(inst, host ) 
+        begin
+          do_down(inst, host)
+        rescue StandardError => ex
+          inst.info "Got error: #{ex}, rollback #{@name}"
+          # do_down( inst, host )
+          raise ex
+        end
+      else
+        inst.info "#{@name} has already be removed. skip it."
+      end
+
+      @deps.each do |dep|
+        if !COMPONENT_MGR.get(dep).run_down( inst, host )
+          return false
+        end
+      end
+
+      !do_check(inst, host)
+    end
+
     def check_deps( inst, host )
       @deps.each do |dep|
         if !COMPONENT_MGR.get(dep).run( inst, host )
@@ -179,9 +204,16 @@ module SimpleDO
   end
 
   module DSL
-    def run( servers, comp )
+    include SSHKit::DSL
+    def run_up( servers, comp )
       on servers do |host|
         COMPONENT_MGR.get( comp.to_sym ).run( self, host )
+      end
+    end
+
+    def run_down( servers, comp )
+      on servers do |host|
+        COMPONENT_MGR.get( comp.to_sym ).run_down( self, host )
       end
     end
 
@@ -198,7 +230,7 @@ module SimpleDO
       reg_comp( Component.new( ns, name, options, &blk) )
     end
 
-    def namespace name
+    def namespace(name)
       COMPONENT_MGR.push_namespace(name)
       yield
     ensure

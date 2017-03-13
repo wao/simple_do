@@ -1,7 +1,8 @@
 require 'simple_do'
 
-module SimpleDO
-  module DSL
+
+    include SimpleDO::DSL
+
     namespace :nginx do
       apt_install :install_pkgs do
         packages "nginx"
@@ -13,5 +14,3 @@ module SimpleDO
 
       comp :install, deps: [ :install_pkgs, :remove_default_site ]
     end
-  end
-end

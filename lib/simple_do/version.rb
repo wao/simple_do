@@ -1,3 +1,3 @@
-module SimpleDo
+module SimpleDO
   VERSION = "0.1.0"
 end

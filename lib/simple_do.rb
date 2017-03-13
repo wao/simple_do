@@ -3,6 +3,6 @@ require "sshkit_patch"
 require "simple_do/comp"
 require "simple_do/some_comps"
 
-module SimpleDo
+module SimpleDO
   # Your code goes here...
 end
