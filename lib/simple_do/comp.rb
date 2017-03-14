@@ -35,7 +35,7 @@ module SimpleDO
 
   class Component
     include AttrChain
-    attr_reader :namespace
+    attr_reader :namespace, :as_user, :cmd_options
 
     def self.fields
       @fields || @fields = []
@@ -67,7 +67,7 @@ module SimpleDO
         pname
       else
         if @namespace.empty?
-          name
+          @name
         else
           :"#{@namespace}:#{pname}"
         end
@@ -85,6 +85,7 @@ module SimpleDO
       @namespace = namespace 
       @name = name.to_sym
       @deps = Set.new 
+      @cmd_options = {}
       self.class.fields.each do |fname|
         if options.include? fname
           self.send( fname, options[fname] )
@@ -133,7 +134,7 @@ module SimpleDO
       @down = blk
     end
 
-    def do_check(inst, host )
+    def do_check(inst, host, params = {} )
       if @check
         inst.instance_exec( host, &@check )
       else
@@ -141,15 +142,27 @@ module SimpleDO
       end
     end
 
-    def do_up(inst, host )
+    def do_up(inst, host, params = {} )
       inst.instance_exec( host, &@up ) if @up
     end
 
-    def do_down(inst, host )
+    def do_down(inst, host, params = {} )
       inst.instance_exec( host, &@down ) if @down
     end
 
     def run(inst, host)
+      if @as_user
+        inst.prepare_sudo_passwd(host) do
+          inst.as @as_user do
+            do_run(inst, host)
+          end
+        end
+      else
+        do_run(inst, host)
+      end
+    end
+
+    def do_run(inst, host, params = {})
       if do_check(inst, host ) 
         inst.info "#{@name} has already be updated to latest status. skip it."
         true
@@ -172,7 +185,7 @@ module SimpleDO
 
     #down this only or down all
     def run_down(inst, host)
-      if do_check(inst, host ) 
+      if do_check(inst, host )
         begin
           do_down(inst, host)
         rescue StandardError => ex

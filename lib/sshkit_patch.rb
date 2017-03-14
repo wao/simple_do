@@ -9,6 +9,12 @@ module SSHKit
       return yield unless options[:user]
       "sudo -A -u #{options[:user]} #{environment_string + " " unless environment_string.empty?}-- sh -c '#{yield}'"
     end
+
+    def umask(&_block)
+      return yield unless options[:umask] || SSHKit.config.umask 
+      sprintf("umask #{options[:umask] || SSHKit.config.umask} && %s", yield)
+    end
+
   end
 end
 
@@ -45,6 +51,13 @@ __END__
       end
 
       def as(who, &_block)
+        @prev_user ||= []
+        @prev_group ||= []
+        if @user
+          @prev_user.push(@user)
+          @prev_group.push(@group)
+        end
+
         if who.is_a? Hash
           @user  = who[:user]  || who["user"]
           @group = who[:group] || who["group"]
@@ -62,6 +75,11 @@ __END__
       ensure
         remove_instance_variable(:@user)
         remove_instance_variable(:@group)
+
+        if !@prev_user.empty?
+          @user = @prev_user.pop
+          @group = @prev_group.pop
+        end
       end
     end
   end
