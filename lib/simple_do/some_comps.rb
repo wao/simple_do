@@ -12,7 +12,7 @@ module SimpleDO
     def setup_proc
       comp = self
       home = if @has_home
-               ""
+               "-m"
              else
                "-M"
              end
@@ -25,18 +25,18 @@ module SimpleDO
 
       shell = @shell || "/bin/false"
 
-      set_check( ->(host){ test( " grep #{comp.user_name} /etc/passwd " ) } )
-      set_up( ->(host){
+      set_check( Proc.new{ |host| test( " grep #{comp.user_name} /etc/passwd " ) } )
+      set_up( Proc.new{ |host|
           prepare_sudo_password( host ) do
             as :root do
               execute( :useradd, " #{home} -s #{shell} #{group} #{comp.user_name}" )
             end
           end
       })
-      set_down( ->(host){
+      set_down( Proc.new{ |host|
           prepare_sudo_password( host ) do
             as :root do
-              execute( :deluser, comp.user_name )
+              execute( :deluser, "--remove-home", comp.user_name )
               if comp.passwd
                 execute( :passwd, comp.user_name, interaction_handler: {
                   /Enter new UNIX password.*/ => "#{comp.passwd}\n",
@@ -58,8 +58,8 @@ module SimpleDO
 
     def setup_proc
       comp = self
-      set_check( ->(host){ !test( " [ -f #{comp.path} ] " ) } )
-      set_up( ->(host){
+      set_check( Proc.new{ |host| !test( " [ -f #{comp.path} ] " ) } )
+      set_up( Proc.new{ |host|
         if test( " [ -w '#{File.dirname comp.path}' ] " )
           execute( :rm, comp.path )
         else
@@ -70,6 +70,48 @@ module SimpleDO
           end
         end
       })
+    end
+  end
+
+  class SymbolLink < Component
+    def_fields :target, :link
+
+    def initialize(namespace, name, options, &blk)
+      super
+    end
+
+    #TODO Need to specify user, permission, group, maybe need sudo
+    def setup_proc
+      comp = self
+      # raise ArgumentError.new( "File #{comp.target} is not exist!" ) if !File.exists? comp.target
+
+      set_check( ->(host) do 
+        test(" [ -e #{comp.link} ] " )
+      end )
+
+      set_up( Proc.new{ |host|
+        if test( " [ -w '#{File.dirname comp.link}' ] " )
+          execute( :ln, "-s", comp.target, comp.link  ) 
+        else
+          prepare_sudo_password( host ) do
+            as :root do
+              execute( :ln, "-s", comp.target, comp.link  ) 
+            end
+          end
+        end
+      })
+
+      set_down( Proc.new{ |host|
+        if test( " [ -w '#{File.dirname comp.link}' ] " )
+          execute( :rm, comp.link ) 
+        else
+          prepare_sudo_password( host ) do 
+            as :root do
+              execute( :rm, comp.link ) 
+            end
+          end
+        end
+      } )
     end
   end
 
@@ -95,7 +137,7 @@ module SimpleDO
         local_checksum.strip.split(" ")[0] == remote_checksum.strip.split(" ")[0]
       end )
 
-      set_up( ->(host){
+      set_up( Proc.new{ |host|
         upload! comp.local, "tmp"
         if comp.permission
           execute( :chmod, comp.permission, "tmp" )
@@ -118,7 +160,7 @@ module SimpleDO
         end
       })
 
-      set_down( ->(host){
+      set_down( Proc.new{ |host|
         if test( " [ -w '#{File.dirname comp.remote}' ] " )
           execute( :rm, comp.remote ) 
         else
@@ -143,8 +185,8 @@ module SimpleDO
       line = "'#{Shellwords.escape(@line)}'"
       file = "'#{Shellwords.escape(@file)}'"
 
-      set_check( ->(host){ test( :grep, line, file ) } )
-      set_up( ->(host){ execute( :echo, line,  ">>", file  ) } )
+      set_check( Proc.new{ |host| test("[[ -e #{@file} ]]") && test( :grep, line, file ) } )
+      set_up( Proc.new{ |host| execute( :echo, line,  ">>", file  ) } )
     end
   end
 
@@ -156,7 +198,7 @@ module SimpleDO
 
     def setup_proc
       pkgs = @pkgs.join(" ")
-      set_up( ->(host){
+      set_up( Proc.new{ |host|
         prepare_sudo_password( host ) do
           as :root do
             execute( :"apt-get", "-y", "install", pkgs )
@@ -177,6 +219,7 @@ module SimpleDO
     end
 
     def setup_proc
+      comp = self
       flag_file = @flag_file
       flag_type = case @flag_type
                   when :file
@@ -189,19 +232,19 @@ module SimpleDO
       repo = @repo
       localpath = @localpath
 
-      set_check( ->(host){
+      set_check( Proc.new{ |host|
         test(" [ #{flag_type} #{flag_file} ] " ) 
       })
 
-      set_up( ->(host){  
+      set_up( Proc.new{ |host|  
         if test(" [ -d #{localpath} ] " ) 
           execute( :rm, "-rf #{localpath}" )
         end
-        execute( :git, "clone", repo, localpath, cmd_options )
+        execute( :git, "clone", repo, localpath, comp.cmd_options )
         # execute( "echo 'export PATH=\"$HOME/.rbenv/bin:$PATH\"' >> ~/.bashrc" )
       })
 
-      set_down( ->(host){
+      set_down( Proc.new{ |host|
         execute( :rm, "-rf", localpath )
       })
     end 
@@ -238,6 +281,10 @@ module SimpleDO
 
     def copy_file(name, options={}, &blk)
       reg_comp( CopyFile.new(ns, name, options, &blk) )
+    end
+
+    def symbol_link(name, options={}, &blk)
+      reg_comp( SymbolLink.new(ns, name, options, &blk) )
     end
 
     def add_user(name, options={}, &blk)

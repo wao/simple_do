@@ -33,25 +33,38 @@ module SimpleDO
 
   COMPONENT_MGR = ComponentMgr.new
 
+  module DefFields
+    def self.included(base)
+      base.extend( ClassMethods )
+    end
+
+    module ClassMethods
+      def def_fields(*args)
+        attr_chain( *args )
+        append_fields( *args )
+      end
+
+      def fields
+        @fields || @fields = []
+      end
+
+      def append_fields(*args)
+        fields.concat( args.flatten.map{ |i| i.to_sym } )
+      end
+    end
+  end
+
   class Component
     include AttrChain
-    attr_reader :namespace, :as_user, :cmd_options
+    include DefFields
 
-    def self.fields
-      @fields || @fields = []
-    end
+    attr_reader :namespace
+    def_fields :as_user, :cmd_options, :dir
 
-    def self.append_fields(*args)
-      fields.concat( args.flatten.map{ |i| i.to_sym } )
-    end
-
-    def self.def_fields(*args)
-      attr_chain( *args )
-      append_fields( *args )
-    end
 
     def set_check(check)
       @check = check
+
     end
 
     def set_down(down)
@@ -78,14 +91,14 @@ module SimpleDO
       resolve_name(@name)
     end
 
-    def initialize(namespace, name, options = {}, &blk)
+    def initialize(namespace, name, options, &blk)
       @check = nil
       @up = nil
       @down = nil
       @namespace = namespace 
       @name = name.to_sym
-      @deps = Set.new 
-      @cmd_options = {}
+      @deps = []
+      @dir = nil
       self.class.fields.each do |fname|
         if options.include? fname
           self.send( fname, options[fname] )
@@ -114,9 +127,9 @@ module SimpleDO
         @deps
       else
         if pdeps.is_a? Array
-          @deps.merge( pdeps.flatten.map{ |i| resolve_name(i).to_sym } )
+          @deps.concat( pdeps.flatten.map{ |i| resolve_name(i).to_sym } )
         else
-          @deps.add( resolve_name(pdeps).to_sym )
+          @deps <<  resolve_name(pdeps).to_sym 
         end
         self
       end
@@ -152,17 +165,28 @@ module SimpleDO
 
     def run(inst, host)
       if @as_user
-        inst.prepare_sudo_passwd(host) do
+        inst.prepare_sudo_password(host) do
           inst.as @as_user do
-            do_run(inst, host)
+            do_run_under_user(inst, host)
           end
         end
       else
-        do_run(inst, host)
+        do_run_under_user(inst, host)
       end
     end
 
-    def do_run(inst, host, params = {})
+    def do_run_under_user(inst, host)
+      if @dir
+        inst.within @dir do
+          do_run_under_dir(inst, host)
+        end
+      else
+        do_run_under_dir(inst, host)
+      end
+    end
+
+
+    def do_run_under_dir(inst, host, params = {})
       if do_check(inst, host ) 
         inst.info "#{@name} has already be updated to latest status. skip it."
         true
@@ -197,7 +221,7 @@ module SimpleDO
         inst.info "#{@name} has already be removed. skip it."
       end
 
-      @deps.each do |dep|
+      @deps.reverse.each do |dep|
         if !COMPONENT_MGR.get(dep).run_down( inst, host )
           return false
         end

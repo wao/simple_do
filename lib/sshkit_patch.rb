@@ -21,6 +21,14 @@ end
 
 module SSHKit
   module Backend
+    class Netssh
+      def upload!(local, remote, options = {})
+        summarizer = transfer_summarizer('Uploading')
+        with_ssh do |ssh|
+          ssh.scp.upload!(local, remote, options, &summarizer)
+        end
+      end
+    end
     class Abstract
       ASKPASS_TMPL=<<__END__
 #!/usr/bin/env bash
